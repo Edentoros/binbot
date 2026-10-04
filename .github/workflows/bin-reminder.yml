@@ -2,10 +2,10 @@ name: Bin reminder
 
 on:
   schedule:
-    # GitHub cron is UTC. One of these is 21:00 in London on any given
+    # GitHub cron is UTC. One of these is 20:00 in London on any given
     # Tuesday; bin_reminder.py works out which and the other one skips.
-    - cron: "0 20 * * 2" # 21:00 BST (summer)
-    - cron: "0 21 * * 2" # 21:00 GMT (winter)
+    - cron: "0 19 * * 2" # 20:00 BST (summer)
+    - cron: "0 20 * * 2" # 20:00 GMT (winter)
   workflow_dispatch:
     inputs:
       test:
@@ -35,7 +35,7 @@ jobs:
   # activity. Re-enabling the workflow through the API each week resets that
   # clock without needing dummy commits.
   keepalive:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 21 * * 2'
+    if: github.event_name == 'schedule' && github.event.schedule == '0 20 * * 2'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

@@ -23,15 +23,15 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 LONDON = ZoneInfo("Europe/London")
-SEND_TIME_LOCAL = (21, 0)  # 21:00 in London
+SEND_TIME_LOCAL = (20, 0)  # 20:00 in London
 LOW_DATES_THRESHOLD = 2
 SCHEDULE_PATH = Path(__file__).with_name("schedule.json")
 
 BIN_LABELS = {
-    "Black": "⚫ Black bin",
-    "Blue": "🔵 Blue bin",
-    "Green": "🟢 Green bin",
-    "Glass": "🟣 Glass bin",
+    "Black": "⚫ Black",
+    "Blue": "🔵 Blue",
+    "Green": "🟢 Green",
+    "Glass": "🟣 Glass",
 }
 
 NO_DATA_MESSAGE = (
@@ -56,7 +56,12 @@ def fmt_day(d):
 
 
 def bin_label(name):
-    return BIN_LABELS.get(name, f"🗑️ {name} bin")
+    return BIN_LABELS.get(name, f"🗑️ {name}")
+
+
+def join_and(items):
+    """["a"] -> "a", ["a", "b"] -> "a and b", ["a", "b", "c"] -> "a, b and c"."""
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
 
 
 def build_message(schedule, today):
@@ -66,8 +71,8 @@ def build_message(schedule, today):
     if bins is None:
         return NO_DATA_MESSAGE
 
-    lines = [f"🗑️ Bins tomorrow ({fmt_day(tomorrow)}): "
-             + " + ".join(bin_label(b) for b in bins)]
+    noun = "bin" if len(bins) == 1 else "bins"
+    lines = [f"{join_and([bin_label(b) for b in bins])} {noun} tomorrow!"]
 
     remaining = sorted(d for d in schedule if d >= tomorrow)
     if len(remaining) <= LOW_DATES_THRESHOLD:
@@ -149,7 +154,7 @@ def main(argv=None):
         local = scheduled_instant(cron, now).astimezone(LONDON)
         if (local.hour, local.minute) != SEND_TIME_LOCAL:
             print(f"Skipping: cron {cron!r} is {local:%H:%M %Z} in London on "
-                  f"{local:%a %d %b %Y}; the other cron covers 21:00.")
+                  f"{local:%a %d %b %Y}; the other cron covers 20:00.")
             return 0
         text = build_message(schedule, local.date())
     else:

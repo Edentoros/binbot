@@ -3,8 +3,8 @@ from datetime import date, datetime, timezone
 
 import bin_reminder as br
 
-BST_CRON = "0 20 * * 2"
-GMT_CRON = "0 21 * * 2"
+BST_CRON = "0 19 * * 2"
+GMT_CRON = "0 20 * * 2"
 
 
 def utc(*args):
@@ -16,31 +16,31 @@ def london_send_time(cron, now):
 
 
 class CronTest(unittest.TestCase):
-    def test_summer_uses_20_utc(self):
-        now = utc(2026, 10, 6, 20, 3)  # Tue 6 Oct, BST
-        self.assertEqual(london_send_time(BST_CRON, now).hour, 21)
-
-    def test_summer_skips_21_utc(self):
-        now = utc(2026, 10, 6, 21, 2)
-        self.assertEqual(london_send_time(GMT_CRON, now).hour, 22)
-
-    def test_winter_uses_21_utc(self):
-        now = utc(2026, 11, 3, 21, 1)  # Tue 3 Nov, GMT
-        self.assertEqual(london_send_time(GMT_CRON, now).hour, 21)
-
-    def test_winter_skips_20_utc(self):
-        now = utc(2026, 11, 3, 20, 1)
+    def test_summer_uses_19_utc(self):
+        now = utc(2026, 10, 6, 19, 3)  # Tue 6 Oct, BST
         self.assertEqual(london_send_time(BST_CRON, now).hour, 20)
 
+    def test_summer_skips_20_utc(self):
+        now = utc(2026, 10, 6, 20, 2)
+        self.assertEqual(london_send_time(GMT_CRON, now).hour, 21)
+
+    def test_winter_uses_20_utc(self):
+        now = utc(2026, 11, 3, 20, 1)  # Tue 3 Nov, GMT
+        self.assertEqual(london_send_time(GMT_CRON, now).hour, 20)
+
+    def test_winter_skips_19_utc(self):
+        now = utc(2026, 11, 3, 19, 1)
+        self.assertEqual(london_send_time(BST_CRON, now).hour, 19)
+
     def test_late_start_still_uses_scheduled_time(self):
-        # The 20:00 UTC run starts 75 minutes late, after the 21:00 one was due.
-        now = utc(2026, 10, 6, 21, 15)
-        self.assertEqual(br.scheduled_instant(BST_CRON, now), utc(2026, 10, 6, 20, 0))
+        # The 19:00 UTC run starts 75 minutes late, after the 20:00 one was due.
+        now = utc(2026, 10, 6, 20, 15)
+        self.assertEqual(br.scheduled_instant(BST_CRON, now), utc(2026, 10, 6, 19, 0))
 
     def test_very_late_start_past_midnight(self):
-        now = utc(2026, 11, 4, 0, 30)  # Wednesday, 3.5h late
+        now = utc(2026, 11, 4, 0, 30)  # Wednesday, 4.5h late
         local = london_send_time(GMT_CRON, now)
-        self.assertEqual((local.date(), local.hour), (date(2026, 11, 3), 21))
+        self.assertEqual((local.date(), local.hour), (date(2026, 11, 3), 20))
 
     def test_rejects_unsupported_cron(self):
         with self.assertRaises(ValueError):
@@ -67,11 +67,21 @@ class MessageTest(unittest.TestCase):
 
     def test_single_bin(self):
         self.assertEqual(br.build_message(self.schedule, date(2026, 10, 6)),
-                         "🗑️ Bins tomorrow (Wed 7 Oct): ⚫ Black bin")
+                         "⚫ Black bin tomorrow!")
 
     def test_two_bins(self):
         self.assertEqual(br.build_message(self.schedule, date(2026, 11, 3)),
-                         "🗑️ Bins tomorrow (Wed 4 Nov): ⚫ Black bin + 🟣 Glass bin")
+                         "⚫ Black and 🟣 Glass bins tomorrow!")
+
+    def test_black_and_green(self):
+        schedule = {date(2026, 12, 2): ["Black", "Green"]}
+        self.assertEqual(br.build_message(schedule, date(2026, 12, 1)).splitlines()[0],
+                         "⚫ Black and 🟢 Green bins tomorrow!")
+
+    def test_three_bins(self):
+        schedule = {date(2026, 12, 2): ["Black", "Blue", "Green"]}
+        self.assertEqual(br.build_message(schedule, date(2026, 12, 1)).splitlines()[0],
+                         "⚫ Black, 🔵 Blue and 🟢 Green bins tomorrow!")
 
     def test_no_data(self):
         self.assertEqual(br.build_message(self.schedule, date(2026, 12, 1)),
@@ -94,7 +104,7 @@ class MessageTest(unittest.TestCase):
     def test_test_message_previews_next_collection(self):
         msg = br.build_test_message(self.schedule, date(2026, 10, 4))
         self.assertEqual(msg, "🧪 TEST – preview of the reminder for Tue 6 Oct\n"
-                              "🗑️ Bins tomorrow (Wed 7 Oct): ⚫ Black bin")
+                              "⚫ Black bin tomorrow!")
 
     def test_test_message_after_schedule_ends(self):
         msg = br.build_test_message(self.schedule, date(2026, 12, 1))
