@@ -1,51 +1,11 @@
+import contextlib
+import io
+import os
 import unittest
-from datetime import date, datetime, timezone
+from datetime import date
+from unittest import mock
 
 import bin_reminder as br
-
-BST_CRON = "0 19 * * 2"
-GMT_CRON = "0 20 * * 2"
-
-
-def utc(*args):
-    return datetime(*args, tzinfo=timezone.utc)
-
-
-def london_send_time(cron, now):
-    return br.scheduled_instant(cron, now).astimezone(br.LONDON)
-
-
-class CronTest(unittest.TestCase):
-    def test_summer_uses_19_utc(self):
-        now = utc(2026, 10, 6, 19, 3)  # Tue 6 Oct, BST
-        self.assertEqual(london_send_time(BST_CRON, now).hour, 20)
-
-    def test_summer_skips_20_utc(self):
-        now = utc(2026, 10, 6, 20, 2)
-        self.assertEqual(london_send_time(GMT_CRON, now).hour, 21)
-
-    def test_winter_uses_20_utc(self):
-        now = utc(2026, 11, 3, 20, 1)  # Tue 3 Nov, GMT
-        self.assertEqual(london_send_time(GMT_CRON, now).hour, 20)
-
-    def test_winter_skips_19_utc(self):
-        now = utc(2026, 11, 3, 19, 1)
-        self.assertEqual(london_send_time(BST_CRON, now).hour, 19)
-
-    def test_late_start_still_uses_scheduled_time(self):
-        # The 19:00 UTC run starts 75 minutes late, after the 20:00 one was due.
-        now = utc(2026, 10, 6, 20, 15)
-        self.assertEqual(br.scheduled_instant(BST_CRON, now), utc(2026, 10, 6, 19, 0))
-
-    def test_very_late_start_past_midnight(self):
-        now = utc(2026, 11, 4, 0, 30)  # Wednesday, 4.5h late
-        local = london_send_time(GMT_CRON, now)
-        self.assertEqual((local.date(), local.hour), (date(2026, 11, 3), 20))
-
-    def test_rejects_unsupported_cron(self):
-        with self.assertRaises(ValueError):
-            br.scheduled_instant("*/5 * 1 * *", utc(2026, 10, 6, 20, 0))
-
 
 # Fixed copy of the autumn 2026 calendar so these tests don't change when
 # schedule.json is updated.
@@ -109,6 +69,32 @@ class MessageTest(unittest.TestCase):
     def test_test_message_after_schedule_ends(self):
         msg = br.build_test_message(self.schedule, date(2026, 12, 1))
         self.assertIn(br.NO_DATA_MESSAGE, msg)
+
+
+class MainTest(unittest.TestCase):
+    """main() picks 'tomorrow' from the London date, whatever UTC says."""
+
+    def run_main(self, now, test="false"):
+        out = io.StringIO()
+        with mock.patch.object(br, "load_schedule", return_value=SCHEDULE), \
+                mock.patch.dict(os.environ, {"TEST": test}), \
+                contextlib.redirect_stdout(out):
+            br.main(["--dry-run", "--now", now])
+        return out.getvalue().strip()
+
+    def test_tuesday_evening_summer(self):
+        # 20:00 BST is 19:00 UTC.
+        self.assertEqual(self.run_main("2026-10-06T19:00:00+00:00"),
+                         "⚫ Black bin tomorrow!")
+
+    def test_tuesday_evening_winter(self):
+        # 20:00 GMT is 20:00 UTC.
+        self.assertEqual(self.run_main("2026-11-03T20:00:00+00:00"),
+                         "⚫ Black and 🟣 Glass bins tomorrow!")
+
+    def test_test_mode(self):
+        self.assertTrue(self.run_main("2026-10-07T12:00:00+00:00", test="true")
+                        .startswith("🧪 TEST – preview of the reminder for Tue 13 Oct"))
 
 
 class ScheduleFileTest(unittest.TestCase):

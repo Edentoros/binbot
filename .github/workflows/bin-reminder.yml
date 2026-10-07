@@ -1,15 +1,13 @@
 name: Bin reminder
 
+# Started at 20:00 UK time every Tuesday by an external timer (cron-job.org)
+# calling GitHub's workflow_dispatch API with test=false. GitHub's own
+# schedule trigger isn't used: it can start runs hours late.
 on:
-  schedule:
-    # GitHub cron is UTC. One of these is 20:00 in London on any given
-    # Tuesday; bin_reminder.py works out which and the other one skips.
-    - cron: "0 19 * * 2" # 20:00 BST (summer)
-    - cron: "0 20 * * 2" # 20:00 GMT (winter)
   workflow_dispatch:
     inputs:
       test:
-        description: "Test: send a preview of the next reminder now"
+        description: "Test: send a preview of the next reminder (untick to send the real reminder for tomorrow)"
         type: boolean
         default: true
 
@@ -28,20 +26,4 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CRON: ${{ github.event.schedule }}
-          TEST: ${{ github.event_name == 'workflow_dispatch' && inputs.test }}
-
-  # GitHub disables scheduled workflows after 60 days without repository
-  # activity. Re-enabling the workflow through the API each week resets that
-  # clock without needing dummy commits.
-  keepalive:
-    if: github.event_name == 'schedule' && github.event.schedule == '0 20 * * 2'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      actions: write
-    steps:
-      - name: Re-enable this workflow
-        run: gh api --method PUT "repos/${{ github.repository }}/actions/workflows/bin-reminder.yml/enable"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          TEST: ${{ inputs.test }}

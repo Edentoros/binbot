@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Send a Telegram reminder about tomorrow's bin collection.
 
-Runs on GitHub Actions. Standard library only.
+Runs on GitHub Actions, started at 20:00 UK time on Tuesdays by an external
+timer (cron-job.org) through the workflow_dispatch API. Standard library only.
 
 Environment:
   TELEGRAM_BOT_TOKEN  Bot token from @BotFather (required unless --dry-run).
   TELEGRAM_CHAT_ID    Chat to send to (required unless --dry-run).
-  CRON                The cron expression that triggered the run
-                      (github.event.schedule). Empty for manual runs.
-  TEST                "true" to send a test message for the next collection.
+  TEST                "true" to send a test message for the next collection;
+                      otherwise send the reminder for tomorrow (London date).
 """
 
 import argparse
@@ -23,7 +23,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 LONDON = ZoneInfo("Europe/London")
-SEND_TIME_LOCAL = (20, 0)  # 20:00 in London
 LOW_DATES_THRESHOLD = 2
 SCHEDULE_PATH = Path(__file__).with_name("schedule.json")
 
@@ -94,28 +93,6 @@ def build_test_message(schedule, today):
             + build_message(schedule, send_day))
 
 
-def scheduled_instant(cron, now):
-    """Most recent UTC datetime <= now that matches `cron`.
-
-    Only handles the simple form "M H * * DOW" (DOW may be "*"), which is
-    all this workflow uses. Working from the cron rather than the clock
-    keeps the result right even if GitHub starts the run late.
-    """
-    fields = cron.split()
-    if len(fields) != 5 or fields[2:4] != ["*", "*"]:
-        raise ValueError(f"Unsupported cron expression: {cron!r}")
-    minute, hour, dow = int(fields[0]), int(fields[1]), fields[4]
-    # Cron counts Sunday as 0 (or 7); Python counts Monday as 0.
-    weekday = None if dow == "*" else (int(dow) + 6) % 7
-
-    for days_back in range(8):
-        d = (now - timedelta(days=days_back)).date()
-        candidate = datetime(d.year, d.month, d.day, hour, minute, tzinfo=timezone.utc)
-        if candidate <= now and (weekday is None or candidate.weekday() == weekday):
-            return candidate
-    raise ValueError(f"No time matching {cron!r} in the week before {now}")
-
-
 def send_telegram(token, chat_id, text):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
@@ -144,22 +121,14 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     now = (args.now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    cron = os.environ.get("CRON", "").strip()
     test = os.environ.get("TEST", "").strip().lower() == "true"
     schedule = load_schedule()
 
+    today = now.astimezone(LONDON).date()
     if test:
-        text = build_test_message(schedule, now.astimezone(LONDON).date())
-    elif cron:
-        local = scheduled_instant(cron, now).astimezone(LONDON)
-        if (local.hour, local.minute) != SEND_TIME_LOCAL:
-            print(f"Skipping: cron {cron!r} is {local:%H:%M %Z} in London on "
-                  f"{local:%a %d %b %Y}; the other cron covers 20:00.")
-            return 0
-        text = build_message(schedule, local.date())
+        text = build_test_message(schedule, today)
     else:
-        # Manual run without the test flag: send the real reminder for tomorrow now.
-        text = build_message(schedule, now.astimezone(LONDON).date())
+        text = build_message(schedule, today)
 
     print(text)
     if args.dry_run:
