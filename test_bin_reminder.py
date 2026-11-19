@@ -105,6 +105,11 @@ class ScheduleFileTest(unittest.TestCase):
             for b in bins:
                 self.assertIn(b, br.BIN_LABELS, f"{day}: unknown bin {b!r}")
 
+    def test_schedule_json_dates_are_wednesdays(self):
+        # Catches typos when copying a new council calendar.
+        for day in br.load_schedule():
+            self.assertEqual(day.weekday(), 2, f"{day} is not a Wednesday")
+
 
 if __name__ == "__main__":
     unittest.main()
